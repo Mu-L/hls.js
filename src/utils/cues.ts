@@ -1,11 +1,11 @@
 import { fixLineBreaks } from './vttparser';
 import type { CaptionScreen, Row } from './cea-608-parser';
+import { generateCueId } from './webvtt-parser';
 
 const WHITESPACE_CHAR = /\s/;
 
 export interface CuesInterface {
   newCue(
-    track: TextTrack | null,
     startTime: number,
     endTime: number,
     captionScreen: CaptionScreen
@@ -13,7 +13,6 @@ export interface CuesInterface {
 }
 
 export function newCue(
-  track: TextTrack | null,
   startTime: number,
   endTime: number,
   captionScreen: CaptionScreen
@@ -51,6 +50,7 @@ export function newCue(
       }
 
       cue = new Cue(startTime, endTime, fixLineBreaks(text.trim()));
+      cue.id = generateCueId(cue.startTime, cue.endTime, cue.text);
 
       if (indent >= 16) {
         indent--;
@@ -67,9 +67,9 @@ export function newCue(
       result.push(cue);
     }
   }
-  if (track && result.length) {
+  if (result.length) {
     // Sort bottom cues in reverse order so that they render in line order when overlapping in Chrome
-    const sortedCues = result.sort((cueA, cueB) => {
+    return result.sort((cueA, cueB) => {
       if (cueA.line === 'auto' || cueB.line === 'auto') {
         return 0;
       }
@@ -78,9 +78,6 @@ export function newCue(
       }
       return cueA.line - cueB.line;
     });
-    for (let i = 0; i < sortedCues.length; i++) {
-      track.addCue(sortedCues[i]);
-    }
   }
   return result;
 }
