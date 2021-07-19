@@ -8,6 +8,8 @@ import type {
 } from '../types/loader';
 import { LoadStats } from '../loader/load-stats';
 
+const AGE_HEADER_LINE_REGEX = /^age:\s*[\d.]+\s*$/m;
+
 class XhrLoader implements Loader<LoaderContext> {
   private xhrSetup: Function | null;
   private requestTimeout?: number;
@@ -17,7 +19,7 @@ class XhrLoader implements Loader<LoaderContext> {
   private callbacks: LoaderCallbacks<LoaderContext> | null = null;
   public context!: LoaderContext;
 
-  public loader: XMLHttpRequest | null = null;
+  private loader: XMLHttpRequest | null = null;
   public stats: LoaderStats;
 
   constructor(config /* HlsConfig */) {
@@ -249,11 +251,16 @@ class XhrLoader implements Loader<LoaderContext> {
     }
   }
 
-  getResponseHeader(name: string): string | null {
-    if (this.loader && this.loader.getAllResponseHeaders().indexOf(name) >= 0) {
-      return this.loader.getResponseHeader(name);
+  getCacheAge(): number | null {
+    let result: number | null = null;
+    if (
+      this.loader &&
+      AGE_HEADER_LINE_REGEX.test(this.loader.getAllResponseHeaders())
+    ) {
+      const ageHeader = this.loader.getResponseHeader('age');
+      result = ageHeader ? parseFloat(ageHeader) : null;
     }
-    return null;
+    return result;
   }
 }
 

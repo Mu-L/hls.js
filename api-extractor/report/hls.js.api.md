@@ -82,7 +82,11 @@ export interface AudioTrackSwitchedData {
 // @public (undocumented)
 export interface AudioTrackSwitchingData {
     // (undocumented)
+    groupId: string;
+    // (undocumented)
     id: number;
+    // (undocumented)
+    name: string;
     // (undocumented)
     type: MediaPlaylistType | 'main';
     // (undocumented)
@@ -207,6 +211,8 @@ export interface BufferFlushedData {
 export interface BufferFlushingData {
     // (undocumented)
     endOffset: number;
+    // (undocumented)
+    endOffsetSubtitles?: number;
     // (undocumented)
     startOffset: number;
     // (undocumented)
@@ -710,6 +716,8 @@ export class Fragment extends BaseSegment {
     get endProgramDateTime(): number | null;
     // (undocumented)
     endPTS?: number;
+    // (undocumented)
+    initSegment: Fragment | null;
     // (undocumented)
     level: number;
     // (undocumented)
@@ -1340,8 +1348,6 @@ export class LevelDetails {
     // (undocumented)
     holdBack: number;
     // (undocumented)
-    initSegment: Fragment | null;
-    // (undocumented)
     get lastPartIndex(): number;
     // (undocumented)
     get lastPartSn(): number;
@@ -1555,12 +1561,9 @@ export interface Loader<T extends LoaderContext> {
     context: T;
     // (undocumented)
     destroy(): void;
-    // (undocumented)
-    getResponseHeader(name: string): string | null;
+    getCacheAge?: () => number | null;
     // (undocumented)
     load(context: LoaderContext, config: LoaderConfiguration, callbacks: LoaderCallbacks<T>): void;
-    // (undocumented)
-    loader: any;
     // (undocumented)
     stats: LoaderStats;
 }
@@ -2009,7 +2012,11 @@ export interface SubtitleTracksUpdatedData {
 // @public (undocumented)
 export interface SubtitleTrackSwitchData {
     // (undocumented)
+    groupId?: string;
+    // (undocumented)
     id: number;
+    // (undocumented)
+    name?: string;
     // (undocumented)
     type?: MediaPlaylistType | 'main';
     // (undocumented)

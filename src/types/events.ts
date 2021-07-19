@@ -64,6 +64,7 @@ export interface BufferEOSData {
 export interface BufferFlushingData {
   startOffset: number;
   endOffset: number;
+  endOffsetSubtitles?: number;
   type: SourceBufferName | null;
 }
 
@@ -153,9 +154,11 @@ export interface LevelPTSUpdatedData {
 }
 
 export interface AudioTrackSwitchingData {
-  url: string;
-  type: MediaPlaylistType | 'main';
   id: number;
+  name: string;
+  groupId: string;
+  type: MediaPlaylistType | 'main';
+  url: string;
 }
 
 export interface AudioTrackSwitchedData {
@@ -173,9 +176,11 @@ export interface SubtitleTracksUpdatedData {
 }
 
 export interface SubtitleTrackSwitchData {
-  url?: string;
-  type?: MediaPlaylistType | 'main';
   id: number;
+  name?: string;
+  groupId?: string;
+  type?: MediaPlaylistType | 'main';
+  url?: string;
 }
 
 export interface SubtitleTrackLoadedData extends TrackLoadedData {}

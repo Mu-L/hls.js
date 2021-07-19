@@ -403,9 +403,8 @@ export class TimelineController implements ComponentAPI {
           return;
         }
         const trackName = `textTrack${instreamIdMatch[1]}`;
-        const trackProperties: TrackProperties = this.captionsProperties[
-          trackName
-        ];
+        const trackProperties: TrackProperties =
+          this.captionsProperties[trackName];
         if (!trackProperties) {
           return;
         }
@@ -591,13 +590,10 @@ export class TimelineController implements ComponentAPI {
     const { frag } = data;
     if (frag.type === PlaylistLevelType.SUBTITLE) {
       if (!Number.isFinite(this.initPTS[frag.cc])) {
-        this.unparsedVttFrags.push((data as unknown) as FragLoadedData);
+        this.unparsedVttFrags.push(data as unknown as FragLoadedData);
         return;
       }
-      this.onFragLoaded(
-        Events.FRAG_LOADED,
-        (data as unknown) as FragLoadedData
-      );
+      this.onFragLoaded(Events.FRAG_LOADED, data as unknown as FragLoadedData);
     }
   }
 
@@ -629,19 +625,32 @@ export class TimelineController implements ComponentAPI {
 
   onBufferFlushing(
     event: Events.BUFFER_FLUSHING,
-    { startOffset, endOffset, type }: BufferFlushingData
+    { startOffset, endOffset, endOffsetSubtitles, type }: BufferFlushingData
   ) {
-    // Clear 608 CC cues from the back buffer
+    const { media } = this;
+    if (!media || media.currentTime < endOffset) {
+      return;
+    }
+    // Clear 608 caption cues from the captions TextTracks when the video back buffer is flushed
     // Forward cues are never removed because we can loose streamed 608 content from recent fragments
     if (!type || type === 'video') {
-      const { media } = this;
-      if (!media || media.currentTime < endOffset) {
-        return;
-      }
       const { captionsTracks } = this;
       Object.keys(captionsTracks).forEach((trackName) =>
         removeCuesInRange(captionsTracks[trackName], startOffset, endOffset)
       );
+    }
+    if (this.config.renderTextTracksNatively) {
+      // Clear VTT/IMSC1 subtitle cues from the subtitle TextTracks when the back buffer is flushed
+      if (startOffset === 0 && endOffsetSubtitles !== undefined) {
+        const { textTracks } = this;
+        Object.keys(textTracks).forEach((trackName) =>
+          removeCuesInRange(
+            textTracks[trackName],
+            startOffset,
+            endOffsetSubtitles
+          )
+        );
+      }
     }
   }
 
