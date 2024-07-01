@@ -4,7 +4,7 @@ import type { HlsEventEmitter } from '../events';
 import { Events } from '../events';
 import { ErrorTypes, ErrorDetails } from '../errors';
 import { logger } from '../utils/logger';
-import {
+import type {
   InitSegmentData,
   Remuxer,
   RemuxerResult,
@@ -160,15 +160,18 @@ export default class MP4Remuxer implements Remuxer {
       if (this.ISGenerated) {
         const config = this.videoTrackConfig;
         if (
-          config &&
-          (videoTrack.width !== config.width ||
-            videoTrack.height !== config.height ||
-            videoTrack.pixelRatio?.[0] !== config.pixelRatio?.[0] ||
-            videoTrack.pixelRatio?.[1] !== config.pixelRatio?.[1])
+          (config &&
+            (videoTrack.width !== config.width ||
+              videoTrack.height !== config.height ||
+              videoTrack.pixelRatio?.[0] !== config.pixelRatio?.[0] ||
+              videoTrack.pixelRatio?.[1] !== config.pixelRatio?.[1])) ||
+          (!config && enoughVideoSamples) ||
+          (this.nextAudioPts === null && enoughAudioSamples)
         ) {
           this.resetInitSegment();
         }
-      } else {
+      }
+      if (!this.ISGenerated) {
         initSegment = this.generateIS(
           audioTrack,
           videoTrack,
@@ -1085,8 +1088,9 @@ export default class MP4Remuxer implements Remuxer {
     const startDTS: number =
       (nextAudioPts !== null
         ? nextAudioPts
-        : videoData.startDTS * inputTimeScale) + init90kHz;
-    const endDTS: number = videoData.endDTS * inputTimeScale + init90kHz;
+        : (videoData.startDTS as number) * inputTimeScale) + init90kHz;
+    const endDTS: number =
+      (videoData.endDTS as number) * inputTimeScale + init90kHz;
     // one sample's duration value
     const frameDuration: number = scaleFactor * AAC_SAMPLES_PER_FRAME;
     // samples count of this segment's duration

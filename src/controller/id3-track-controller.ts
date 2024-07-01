@@ -4,21 +4,24 @@ import {
   clearCurrentCues,
   removeCuesInRange,
 } from '../utils/texttrack-utils';
-import * as ID3 from '../demux/id3';
 import {
   DateRange,
   isDateRangeCueAttribute,
   isSCTE35Attribute,
 } from '../loader/date-range';
+import { LevelDetails } from '../loader/level-details';
 import { MetadataSchema } from '../types/demuxer';
 import type {
   BufferFlushingData,
   FragParsingMetadataData,
+  LevelPTSUpdatedData,
   LevelUpdatedData,
   MediaAttachedData,
 } from '../types/events';
 import type { ComponentAPI } from '../types/component-api';
 import type Hls from '../hls';
+import { getId3Frames } from '@svta/common-media-library/id3/getId3Frames';
+import { isId3TimestampFrame } from '@svta/common-media-library/id3/isId3TimestampFrame';
 
 declare global {
   interface Window {
@@ -68,10 +71,6 @@ const MAX_CUE_ENDTIME = (() => {
   return Number.POSITIVE_INFINITY;
 })();
 
-function dateRangeDateToTimelineSeconds(date: Date, offset: number): number {
-  return date.getTime() / 1000 - offset;
-}
-
 function hexToArrayBuffer(str): ArrayBuffer {
   return Uint8Array.from(
     str
@@ -99,7 +98,7 @@ class ID3TrackController implements ComponentAPI {
     this._registerListeners();
   }
 
-  destroy() {
+  public destroy() {
     this._unregisterListeners();
     this.id3Track = null;
     this.media = null;
@@ -116,6 +115,7 @@ class ID3TrackController implements ComponentAPI {
     hls.on(Events.FRAG_PARSING_METADATA, this.onFragParsingMetadata, this);
     hls.on(Events.BUFFER_FLUSHING, this.onBufferFlushing, this);
     hls.on(Events.LEVEL_UPDATED, this.onLevelUpdated, this);
+    hls.on(Events.LEVEL_PTS_UPDATED, this.onLevelPtsUpdated, this);
   }
 
   private _unregisterListeners() {
@@ -126,17 +126,18 @@ class ID3TrackController implements ComponentAPI {
     hls.off(Events.FRAG_PARSING_METADATA, this.onFragParsingMetadata, this);
     hls.off(Events.BUFFER_FLUSHING, this.onBufferFlushing, this);
     hls.off(Events.LEVEL_UPDATED, this.onLevelUpdated, this);
+    hls.off(Events.LEVEL_PTS_UPDATED, this.onLevelPtsUpdated, this);
   }
 
   // Add ID3 metatadata text track.
-  protected onMediaAttached(
+  private onMediaAttached(
     event: Events.MEDIA_ATTACHED,
     data: MediaAttachedData,
   ): void {
     this.media = data.media;
   }
 
-  protected onMediaDetaching(): void {
+  private onMediaDetaching(): void {
     if (this.id3Track) {
       clearCurrentCues(this.id3Track);
       this.id3Track = null;
@@ -149,13 +150,13 @@ class ID3TrackController implements ComponentAPI {
     this.dateRangeCuesAppended = {};
   }
 
-  createTrack(media: HTMLMediaElement): TextTrack {
+  private createTrack(media: HTMLMediaElement): TextTrack {
     const track = this.getID3Track(media.textTracks) as TextTrack;
     track.mode = 'hidden';
     return track;
   }
 
-  getID3Track(textTracks: TextTrackList): TextTrack | void {
+  private getID3Track(textTracks: TextTrackList): TextTrack | void {
     if (!this.media) {
       return;
     }
@@ -172,7 +173,7 @@ class ID3TrackController implements ComponentAPI {
     return this.media.addTextTrack('metadata', 'id3');
   }
 
-  onFragParsingMetadata(
+  private onFragParsingMetadata(
     event: Events.FRAG_PARSING_METADATA,
     data: FragParsingMetadataData,
   ) {
@@ -210,7 +211,7 @@ class ID3TrackController implements ComponentAPI {
         continue;
       }
 
-      const frames = ID3.getID3Frames(samples[i].data);
+      const frames = getId3Frames(samples[i].data);
       if (frames) {
         const startTime = samples[i].pts;
         let endTime: number = startTime + samples[i].duration;
@@ -227,7 +228,7 @@ class ID3TrackController implements ComponentAPI {
         for (let j = 0; j < frames.length; j++) {
           const frame = frames[j];
           // Safari doesn't put the timestamp frame in the TextTrack
-          if (!ID3.isTimeStampFrame(frame)) {
+          if (!isId3TimestampFrame(frame)) {
             // add a bounds to any unbounded cues
             this.updateId3CueEnds(startTime, type);
             const cue = createCueWithDataFields(
@@ -246,7 +247,7 @@ class ID3TrackController implements ComponentAPI {
     }
   }
 
-  updateId3CueEnds(startTime: number, type: MetadataSchema) {
+  private updateId3CueEnds(startTime: number, type: MetadataSchema) {
     const cues = this.id3Track?.cues;
     if (cues) {
       for (let i = cues.length; i--; ) {
@@ -262,7 +263,7 @@ class ID3TrackController implements ComponentAPI {
     }
   }
 
-  onBufferFlushing(
+  private onBufferFlushing(
     event: Events.BUFFER_FLUSHING,
     { startOffset, endOffset, type }: BufferFlushingData,
   ) {
@@ -294,7 +295,23 @@ class ID3TrackController implements ComponentAPI {
     }
   }
 
-  onLevelUpdated(event: Events.LEVEL_UPDATED, { details }: LevelUpdatedData) {
+  private onLevelUpdated(
+    event: Events.LEVEL_UPDATED,
+    { details }: LevelUpdatedData,
+  ) {
+    this.updateDateRangeCues(details, true);
+  }
+
+  private onLevelPtsUpdated(
+    event: Events.LEVEL_PTS_UPDATED,
+    data: LevelPTSUpdatedData,
+  ) {
+    if (Math.abs(data.drift) > 0.01) {
+      this.updateDateRangeCues(data.details);
+    }
+  }
+
+  private updateDateRangeCues(details: LevelDetails, removeOldCues?: true) {
     if (
       !this.media ||
       !details.hasProgramDateTime ||
@@ -306,7 +323,7 @@ class ID3TrackController implements ComponentAPI {
     const { dateRanges } = details;
     const ids = Object.keys(dateRanges);
     // Remove cues from track not found in details.dateRanges
-    if (id3Track) {
+    if (id3Track && removeOldCues) {
       const idsToRemove = Object.keys(dateRangeCuesAppended).filter(
         (id) => !ids.includes(id),
       );
@@ -328,26 +345,20 @@ class ID3TrackController implements ComponentAPI {
       this.id3Track = this.createTrack(this.media);
     }
 
-    const dateTimeOffset =
-      (lastFragment.programDateTime as number) / 1000 - lastFragment.start;
     const Cue = getCueClass();
-
     for (let i = 0; i < ids.length; i++) {
       const id = ids[i];
       const dateRange = dateRanges[id];
-      const startTime = dateRangeDateToTimelineSeconds(
-        dateRange.startDate,
-        dateTimeOffset,
-      );
+      const startTime = dateRange.startTime;
 
       // Process DateRanges to determine end-time (known DURATION, END-DATE, or END-ON-NEXT)
       const appendedDateRangeCues = dateRangeCuesAppended[id];
       const cues = appendedDateRangeCues?.cues || {};
       let durationKnown = appendedDateRangeCues?.durationKnown || false;
       let endTime = MAX_CUE_ENDTIME;
-      const endDate = dateRange.endDate;
-      if (endDate) {
-        endTime = dateRangeDateToTimelineSeconds(endDate, dateTimeOffset);
+      const { duration, endDate } = dateRange;
+      if (endDate && duration !== null) {
+        endTime = startTime + duration;
         durationKnown = true;
       } else if (dateRange.endOnNext && !durationKnown) {
         const nextDateRangeWithSameClass = ids.reduce(
@@ -368,10 +379,7 @@ class ID3TrackController implements ComponentAPI {
           null,
         );
         if (nextDateRangeWithSameClass) {
-          endTime = dateRangeDateToTimelineSeconds(
-            nextDateRangeWithSameClass.startDate,
-            dateTimeOffset,
-          );
+          endTime = nextDateRangeWithSameClass.startTime;
           durationKnown = true;
         }
       }
@@ -387,6 +395,9 @@ class ID3TrackController implements ComponentAPI {
         const cue = cues[key];
         if (cue) {
           if (durationKnown && !appendedDateRangeCues.durationKnown) {
+            cue.endTime = endTime;
+          } else if (Math.abs(cue.startTime - startTime) > 0.01) {
+            cue.startTime = startTime;
             cue.endTime = endTime;
           }
         } else if (Cue) {

@@ -1,5 +1,8 @@
 import BaseVideoParser from './base-video-parser';
-import { DemuxedVideoTrack, DemuxedUserdataTrack } from '../../types/demuxer';
+import type {
+  DemuxedVideoTrack,
+  DemuxedUserdataTrack,
+} from '../../types/demuxer';
 import { parseSEIMessageFromNALu } from '../../utils/mp4-tools';
 
 import type { PES } from '../tsdemuxer';
@@ -13,10 +16,10 @@ class HevcVideoParser extends BaseVideoParser {
     track: DemuxedVideoTrack,
     textTrack: DemuxedUserdataTrack,
     pes: PES,
-    last: boolean,
+    endOfSegment: boolean,
     duration: number,
   ) {
-    const units = this.parseNALu(track, pes.data);
+    const units = this.parseNALu(track, pes.data, endOfSegment);
     const debug = false;
     let VideoSample = this.VideoSample;
     let push: boolean;
@@ -241,7 +244,7 @@ class HevcVideoParser extends BaseVideoParser {
       }
     });
     // if last PES packet, push samples
-    if (last && VideoSample) {
+    if (endOfSegment && VideoSample) {
       this.pushAccessUnit(VideoSample, track);
       this.VideoSample = null;
     }
